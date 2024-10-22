@@ -41,6 +41,22 @@ void LoggerDump(const char* content)
     logText.insert(0, oss.str());
 }
 
+// 将UTF-8字符串转换为宽字符（UTF-16）
+std::wstring Utf8ToUtf16(const std::string& utf8_str) {
+    int wide_size = MultiByteToWideChar(CP_UTF8, 0, &utf8_str[0], (int)utf8_str.size(), NULL, 0);
+    std::vector<wchar_t> wstr(wide_size + 1, 0); // +1 for null terminator
+    MultiByteToWideChar(CP_UTF8, 0, &utf8_str[0], -1, &wstr[0], wide_size);
+    return std::wstring(&wstr[0]);
+}
+
+// 将宽字符（UTF-16）转换为GBK
+std::string Utf16ToGbk(const std::wstring& utf16_str) {
+    int gbk_size = WideCharToMultiByte(CP_ACP, 0, &utf16_str[0], (int)utf16_str.size(), NULL, 0, NULL, NULL);
+    std::vector<char> gbk(gbk_size + 1, 0); // +1 for null terminator
+    WideCharToMultiByte(CP_ACP, 0, &utf16_str[0], -1, &gbk[0], gbk_size, NULL, NULL);
+    return std::string(&gbk[0]);
+}
+
 std::wstring CharToWchar(const char* mbstr) {
     if (mbstr == nullptr) return L"";
 
@@ -86,7 +102,7 @@ std::wstring changeFileExtension(const std::wstring& path, const std::wstring& n
 
 void Xlsx2Json(std::wstring& srcPath, std::wstring& desPath)
 {
-    LoggerDump((std::string(" 转换启动 ") += WcharToChar(srcPath.c_str())).c_str());
+    LoggerDump(" =================转换启动=================");
     xlnt::workbook wb;
     wb.load(srcPath);
     auto ws = wb.active_sheet();
@@ -132,8 +148,24 @@ void Xlsx2Json(std::wstring& srcPath, std::wstring& desPath)
         line++;
     }
 
+    // 默认UTF-8编码的方式（格式化）
+    //std::ofstream outPut(desPath.c_str());
+    //outPut << std::setw(4) << arr << std::endl;
+    
+    // 转GBK编码的方式（格式化）
+    //std::stringstream ssBuf;
+    //ssBuf << std::setw(4) << arr << std::endl;
+    //std::wstring utf16Str = Utf8ToUtf16(ssBuf.str());
+    //std::string gbkStr = Utf16ToGbk(utf16Str);
+    //std::ofstream outPut(desPath.c_str());
+    //outPut << gbkStr << std::endl;
+
+    // 转GBK编码的方式（非格式化）
+    std::wstring utf16Str = Utf8ToUtf16(arr.dump());
+    std::string gbkStr = Utf16ToGbk(utf16Str);
     std::ofstream outPut(desPath.c_str());
-    outPut << std::setw(4) << arr << std::endl;
+    outPut << gbkStr << std::endl;
+    
     LoggerDump((std::string(" 转换完成 ") += WcharToChar(desPath.c_str())).c_str());
 }
 
