@@ -104,30 +104,32 @@ void Xlsx2Json(std::wstring& srcPath, std::wstring& desPath)
     wb.load(srcPath);
     auto ws = wb.active_sheet();
     auto dim = ws.calculate_dimension();
-    LoggerDump(WcharToChar(std::wstring(L"列数:") + std::to_wstring(dim.width()) + L"\t" + std::wstring(L"行数:") + std::to_wstring(dim.height())).c_str());
+    size_t max_row = dim.height();
+    size_t max_column = dim.width();
+    LoggerDump(WcharToChar(std::wstring(L"列数:") + std::to_wstring(max_column) + L"\t" + std::wstring(L"行数:") + std::to_wstring(max_row)).c_str());
     
-
     Json::Value arr;
     std::vector<std::string> keys;
-    int32_t line = 0;
-    int32_t column = 0;
-    for (const auto& row : ws)
+    for (size_t row_index = 1; row_index <= max_row; ++row_index)
     {
         Json::Value tab;
-        for (const auto& cell : row)
+        for (int32_t col_index = 1; col_index <= max_column; ++col_index)
         {
-            if (line == 0) // 第一行读取键
+            xlnt::cell cell = ws.cell(col_index, row_index);
+            if (row_index == 1) // 第一行读取键
             {
                 keys.emplace_back(cell.to_string());
             }
             else
             {
-                auto& key = keys[column];
-                tab[key] = cell.to_string();
+                auto& key = keys[col_index - 1];
+                if (cell.has_value())
+                    tab[key] = cell.to_string();
+                else
+                    tab[key] = "";
             }
-            column++;
         }
-        if (line == 0)
+        if (row_index == 1)
         {
             Json::Value keyJson;
             for (auto& key : keys)
@@ -146,8 +148,6 @@ void Xlsx2Json(std::wstring& srcPath, std::wstring& desPath)
         {
             arr.append(tab);
         }
-        column = 0;
-        line++;
     }
 
     Json::StreamWriterBuilder builder;
