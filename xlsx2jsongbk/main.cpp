@@ -151,7 +151,7 @@ void Xlsx2Json(std::wstring& srcPath, std::wstring& desPath)
     }
 
     Json::StreamWriterBuilder builder;
-    builder.settings_["indentation"] = "";
+    builder.settings_["indentation"] = "    ";
     builder.settings_["emitUTF8"] = true;
     std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
     std::ostringstream ossJson;
