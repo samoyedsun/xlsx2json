@@ -7,7 +7,7 @@
 #include <fstream>
 #include <mimalloc.h>
 #include <xlnt/xlnt.hpp>
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -21,7 +21,6 @@
 #include <GLFW/glfw3native.h>
 
 namespace fs = std::filesystem;
-using ordered_json = nlohmann::ordered_json;
 
 std::string logText = "";
 
@@ -41,7 +40,7 @@ void LoggerDump(const char* content)
     logText.insert(0, oss.str());
 }
 
-// å°†UTF-8å­—ç¬¦ä¸²è½¬æ¢ä¸ºå®½å­—ç¬¦ï¼ˆUTF-16ï¼‰
+// ½«UTF-8×Ö·û´®×ª»»Îª¿í×Ö·û£¨UTF-16£©
 std::wstring Utf8ToUtf16(const std::string& utf8_str) {
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, &utf8_str[0], (int)utf8_str.size(), NULL, 0);
     std::vector<wchar_t> wstr(wide_size + 1, 0); // +1 for null terminator
@@ -49,7 +48,7 @@ std::wstring Utf8ToUtf16(const std::string& utf8_str) {
     return std::wstring(&wstr[0]);
 }
 
-// å°†å®½å­—ç¬¦ï¼ˆUTF-16ï¼‰è½¬æ¢ä¸ºGBK
+// ½«¿í×Ö·û£¨UTF-16£©×ª»»ÎªGBK
 std::string Utf16ToGbk(const std::wstring& utf16_str) {
     int gbk_size = WideCharToMultiByte(CP_ACP, 0, &utf16_str[0], (int)utf16_str.size(), NULL, 0, NULL, NULL);
     std::vector<char> gbk(gbk_size + 1, 0); // +1 for null terminator
@@ -57,116 +56,111 @@ std::string Utf16ToGbk(const std::wstring& utf16_str) {
     return std::string(&gbk[0]);
 }
 
-std::wstring CharToWchar(const char* mbstr) {
-    if (mbstr == nullptr) return L"";
-
-    int len = MultiByteToWideChar(CP_UTF8, 0, mbstr, -1, nullptr, 0);
+std::wstring CharToWchar(const std::string& mbstr) {
+    const char* mbcstr = mbstr.c_str();
+    int len = MultiByteToWideChar(CP_UTF8, 0, mbcstr, -1, nullptr, 0);
     if (len == 0) {
         std::cerr << "MultiByteToWideChar failed" << std::endl;
         return L"";
     }
 
     wchar_t* wcstr = new wchar_t[len];
-    MultiByteToWideChar(CP_UTF8, 0, mbstr, -1, wcstr, len);
+    MultiByteToWideChar(CP_UTF8, 0, mbcstr, -1, wcstr, len);
     std::wstring result(wcstr);
     delete[] wcstr;
     return result;
 }
 
-std::string WcharToChar(const wchar_t* wcstr) {
-    if (wcstr == nullptr) return "";
-
-    int len = WideCharToMultiByte(CP_UTF8, 0, wcstr, -1, nullptr, 0, nullptr, nullptr);
+std::string WcharToChar(const std::wstring& wstr) {
+    const wchar_t* wccstr = wstr.c_str();
+    int len = WideCharToMultiByte(CP_UTF8, 0, wccstr, -1, nullptr, 0, nullptr, nullptr);
     if (len == 0) {
         std::cerr << "WideCharToMultiByte failed" << std::endl;
         return "";
     }
 
     std::vector<char> mbstr(len);
-    WideCharToMultiByte(CP_UTF8, 0, wcstr, -1, &mbstr[0], len, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, wccstr, -1, &mbstr[0], len, nullptr, nullptr);
     return std::string(mbstr.begin(), mbstr.end());
 }
 
 std::wstring changeFileExtension(const std::wstring& path, const std::wstring& newExtension) {
-    // è·å–æ–‡ä»¶çš„åŸºæœ¬åå’Œæ‰©å±•å  
+    // »ñÈ¡ÎÄ¼şµÄ»ù±¾ÃûºÍÀ©Õ¹Ãû  
     std::wstring baseName = fs::path(path).filename().wstring();
     std::wstring extension = fs::path(path).extension().wstring();
-    // ç§»é™¤åŸå§‹æ‰©å±•å  
+    // ÒÆ³ıÔ­Ê¼À©Õ¹Ãû  
     size_t dotPos = baseName.rfind('.');
     if (dotPos != std::string::npos) {
         baseName.erase(dotPos);
     }
-    // æ·»åŠ æ–°æ‰©å±•å  
+    // Ìí¼ÓĞÂÀ©Õ¹Ãû  
     return fs::path(path).parent_path().wstring() + L"\\" + baseName + newExtension;
 }
 
 void Xlsx2Json(std::wstring& srcPath, std::wstring& desPath)
 {
-    LoggerDump(" =================è½¬æ¢å¯åŠ¨=================");
+    LoggerDump(WcharToChar(L" =================×ª»»¿ªÊ¼=================").c_str());
     xlnt::workbook wb;
     wb.load(srcPath);
     auto ws = wb.active_sheet();
     auto dim = ws.calculate_dimension();
-    std::string logContent = std::string("åˆ—æ•°:") + std::to_string(dim.width());
-    logContent += "\t" + std::string("è¡Œæ•°:") + std::to_string(dim.height());
-    LoggerDump(logContent.c_str());
+    size_t max_row = dim.height();
+    size_t max_column = dim.width();
+    LoggerDump(WcharToChar(std::wstring(L"ÁĞÊı:") + std::to_wstring(max_column) + L"\t" + std::wstring(L"ĞĞÊı:") + std::to_wstring(max_row)).c_str());
     
-    ordered_json arr;
+    Json::Value arr;
     std::vector<std::string> keys;
-    int32_t line = 0;
-    int32_t column = 0;
-    for (const auto& row : ws)
+    for (size_t row_index = 1; row_index <= max_row; ++row_index)
     {
-        ordered_json tab;
-        for (const auto& cell : row)
+        Json::Value tab;
+        for (int32_t col_index = 1; col_index <= max_column; ++col_index)
         {
-            if (line == 0) // ç¬¬ä¸€è¡Œè¯»å–é”®
+            xlnt::cell cell = ws.cell(col_index, row_index);
+            if (row_index == 1) // µÚÒ»ĞĞ¶ÁÈ¡¼ü
             {
                 keys.emplace_back(cell.to_string());
             }
             else
             {
-                auto& key = keys[column];
-                tab[key] = cell.to_string();
+                auto& key = keys[col_index - 1];
+                if (cell.has_value())
+                    tab[key] = cell.to_string();
+                else
+                    tab[key] = "";
             }
-            column++;
         }
-        if (line == 0)
+        if (row_index == 1)
         {
-            ordered_json keyJson;
+            Json::Value keyJson;
             for (auto& key : keys)
             {
-                keyJson.emplace_back(key);
+                keyJson.append(key);
             }
-            LoggerDump(keyJson.dump().c_str());
+            Json::StreamWriterBuilder builder;
+            builder.settings_["indentation"] = "";
+            builder.settings_["emitUTF8"] = true;
+            std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+            std::ostringstream ossJson;
+            writer->write(keyJson, &ossJson);
+            LoggerDump(ossJson.str().c_str());
         }
         else
         {
-            arr.push_back(tab);
+            arr.append(tab);
         }
-        column = 0;
-        line++;
     }
 
-    // é»˜è®¤UTF-8ç¼–ç çš„æ–¹å¼ï¼ˆæ ¼å¼åŒ–ï¼‰
-    //std::ofstream outPut(desPath.c_str());
-    //outPut << std::setw(4) << arr << std::endl;
-    
-    // è½¬GBKç¼–ç çš„æ–¹å¼ï¼ˆæ ¼å¼åŒ–ï¼‰
-    //std::stringstream ssBuf;
-    //ssBuf << std::setw(4) << arr << std::endl;
-    //std::wstring utf16Str = Utf8ToUtf16(ssBuf.str());
-    //std::string gbkStr = Utf16ToGbk(utf16Str);
-    //std::ofstream outPut(desPath.c_str());
-    //outPut << gbkStr << std::endl;
-
-    // è½¬GBKç¼–ç çš„æ–¹å¼ï¼ˆéæ ¼å¼åŒ–ï¼‰
-    std::wstring utf16Str = Utf8ToUtf16(arr.dump());
+    Json::StreamWriterBuilder builder;
+    builder.settings_["indentation"] = "    ";
+    builder.settings_["emitUTF8"] = true;
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    std::ostringstream ossJson;
+    writer->write(arr, &ossJson);
+    std::wstring utf16Str = Utf8ToUtf16(ossJson.str());
     std::string gbkStr = Utf16ToGbk(utf16Str);
     std::ofstream outPut(desPath.c_str());
     outPut << gbkStr << std::endl;
-    
-    LoggerDump((std::string(" è½¬æ¢å®Œæˆ ") += WcharToChar(desPath.c_str())).c_str());
+    LoggerDump(WcharToChar(std::wstring(L" ×ª»»Íê³É ") + desPath).c_str());
 }
 
 void DrawConvertWindow()
@@ -177,7 +171,7 @@ void DrawConvertWindow()
     ImGuiWindowFlags window_flags = 0;
     window_flags |= ImGuiWindowFlags_NoMove;
     window_flags |= ImGuiWindowFlags_NoBackground;
-    ImGui::Begin("æ‹–å…¥xlsxæ–‡ä»¶ç”Ÿæˆjson", nullptr, window_flags);
+    ImGui::Begin(WcharToChar(std::wstring(L" ÍÏÈëxlsxÎÄ¼şÉú³Éjson ")).c_str(), nullptr, window_flags);
 
     ImGui::SetWindowFontScale(0.5);
     ImGui::TextWrapped("%s", logText.c_str());
@@ -205,7 +199,7 @@ public:
 
     HRESULT DragEnter(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect)
     {
-        // å¤„ç†æ‹–å…¥æ“ä½œ
+        // ´¦ÀíÍÏÈë²Ù×÷
         *pdwEffect &= DROPEFFECT_COPY;
         return S_OK;
     }
@@ -223,7 +217,7 @@ public:
 
     HRESULT Drop(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect)
     {
-        // å¤„ç†æ”¾ç½®æ“ä½œ
+        // ´¦Àí·ÅÖÃ²Ù×÷
         *pdwEffect &= DROPEFFECT_COPY;
         FORMATETC fmtetc = { CF_HDROP, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
         STGMEDIUM stgmedium;
@@ -234,7 +228,7 @@ public:
             HDROP hDrop = (HDROP)stgmedium.hGlobal;
             wchar_t xlsxPath[MAX_PATH] = {0};
             DragQueryFileW(hDrop, 0, xlsxPath, MAX_PATH);
-            try { // è¯»å–å•å…ƒæ ¼çš„å€¼
+            try { // ¶ÁÈ¡µ¥Ôª¸ñµÄÖµ
                 std::wstring srcPath = xlsxPath;
                 std::wstring desPath = changeFileExtension(xlsxPath, L".json");
                 Xlsx2Json(srcPath, desPath);
@@ -252,14 +246,14 @@ public:
 int main(int argc, char* argv[])
 {
     std::cout << "Tool Launch Success!" << std::endl;
-    // åˆå§‹åŒ– GLFW
+    // ³õÊ¼»¯ GLFW
     if (!glfwInit())
     {
         return -1;
     }
     ShowWindow(GetConsoleWindow(), SW_HIDE);
-    SetConsoleOutputCP(CP_UTF8);
-    // åˆ›å»ºçª—å£å’Œä¸Šä¸‹æ–‡
+    //SetConsoleOutputCP(CP_UTF8);
+    // ´´½¨´°¿ÚºÍÉÏÏÂÎÄ
     GLFWwindow* window = glfwCreateWindow(800, 400, "xlsx2json create by ImGui", NULL, NULL);
     if (!window)
     {
@@ -268,12 +262,12 @@ int main(int argc, char* argv[])
     }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
-    // åˆå§‹åŒ– OpenGL3
+    // ³õÊ¼»¯ OpenGL3
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         return -1;
     }
-    // åˆå§‹åŒ– Dear ImGui
+    // ³õÊ¼»¯ Dear ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -285,25 +279,25 @@ int main(int argc, char* argv[])
     ImGuiStyle* style = &ImGui::GetStyle();
     style->Colors[ImGuiCol_Text] = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
 
-    // åˆå§‹åŒ–æ‹–æ–‡ä»¶ç›¸å…³
+    // ³õÊ¼»¯ÍÏÎÄ¼şÏà¹Ø
     OleInitialize(NULL);
     HWND hwnd = glfwGetWin32Window(window);
     DropManager dm;
     RegisterDragDrop(hwnd, &dm);
 
-    // ä¸»å¾ªç¯
+    // Ö÷Ñ­»·
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
 
-        // å¼€å§‹ Dear ImGui å¸§
+        // ¿ªÊ¼ Dear ImGui Ö¡
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
         DrawConvertWindow();
 
-        // æ¸²æŸ“ Dear ImGui
+        // äÖÈ¾ Dear ImGui
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -315,16 +309,16 @@ int main(int argc, char* argv[])
         glfwSwapBuffers(window);
     }
 
-    // æ¸…ç†å’Œé”€æ¯ Dear ImGui ä¸Šä¸‹æ–‡
+    // ÇåÀíºÍÏú»Ù Dear ImGui ÉÏÏÂÎÄ
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    // æ¸…ç† GLFW å’Œ OpenGL3
+    // ÇåÀí GLFW ºÍ OpenGL3
     glfwDestroyWindow(window);
     glfwTerminate();
     
-    // æ¸…ç†æ‹–æ–‡ä»¶ç›¸å…³
+    // ÇåÀíÍÏÎÄ¼şÏà¹Ø
     RevokeDragDrop(hwnd);
     OleUninitialize();
 
